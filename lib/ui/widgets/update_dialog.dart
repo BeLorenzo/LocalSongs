@@ -32,15 +32,37 @@ class UpdateDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Parsing note di rilascio
+    // Parsing e pulizia note di rilascio da GitHub
     final rawNotes = updateInfo.releaseNotes.trim();
-    final noteLines = rawNotes.isNotEmpty
-        ? rawNotes
-            .split('\n')
-            .map((l) => l.replaceFirst(RegExp(r'^[-*•#\d.]\s*'), '').trim())
-            .where((l) => l.length > 2)
-            .toList()
-        : <String>[];
+    List<String> noteLines = [];
+
+    if (rawNotes.isNotEmpty) {
+      noteLines = rawNotes
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) =>
+              l.isNotEmpty &&
+              !l.toLowerCase().contains('full changelog') &&
+              !l.toLowerCase().contains("what's changed"))
+          .map((l) {
+            var clean = l.replaceFirst(RegExp(r'^[-*•#\d.]+\s*'), '').trim();
+            clean = clean.replaceFirst(RegExp(r'\s+by\s+@\w+.*$', caseSensitive: false), '').trim();
+            clean = clean.replaceFirst(
+                RegExp(r'^(feat|fix|docs|style|refactor|perf|test|chore)(\(.*?\))?:\s*',
+                    caseSensitive: false),
+                '').trim();
+            if (clean.isNotEmpty) {
+              clean = clean[0].toUpperCase() + clean.substring(1);
+            }
+            return clean;
+          })
+          .where((l) => l.length > 3)
+          .toList();
+    }
+
+    if (noteLines.isEmpty) {
+      noteLines = ['Miglioramenti generali delle prestazioni e correzioni di stabilità.'];
+    }
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -142,67 +164,64 @@ class UpdateDialog extends StatelessWidget {
               const SizedBox(height: 16),
 
               // Riquadro Novità / Note di rilascio
-              if (noteLines.isNotEmpty) ...[
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Novità dell\'aggiornamento:',
-                    style: TextStyle(
-                      color: Colors.grey.shade400,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                    ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Novità dell\'aggiornamento:',
+                  style: TextStyle(
+                    color: Colors.grey.shade400,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
                   ),
                 ),
-                const SizedBox(height: 8),
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 140),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF121212),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.08),
-                    ),
-                  ),
-                  child: Scrollbar(
-                    thumbVisibility: true,
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: noteLines.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 6),
-                      itemBuilder: (context, index) {
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Padding(
-                              padding: EdgeInsets.only(top: 4, right: 8),
-                              child: Icon(
-                                Icons.circle,
-                                size: 5,
-                                color: Color(0xFF1DB954),
-                              ),
-                            ),
-                            Expanded(
-                              child: Text(
-                                noteLines[index],
-                                style: const TextStyle(
-                                  color: Color(0xFFE0E0E0),
-                                  fontSize: 12,
-                                  height: 1.3,
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 140),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF121212),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.08),
                   ),
                 ),
-                const SizedBox(height: 20),
-              ] else
-                const SizedBox(height: 8),
+                child: Scrollbar(
+                  thumbVisibility: true,
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: noteLines.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 6),
+                    itemBuilder: (context, index) {
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 4, right: 8),
+                            child: Icon(
+                              Icons.circle,
+                              size: 5,
+                              color: Color(0xFF1DB954),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              noteLines[index],
+                              style: const TextStyle(
+                                color: Color(0xFFE0E0E0),
+                                fontSize: 12,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
 
               // Bottone Scarica e Aggiorna
               SizedBox(
