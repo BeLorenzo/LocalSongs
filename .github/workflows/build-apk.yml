@@ -25,9 +25,14 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android NDK 27
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Android NDK 27 & Licenses
         run: |
-          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.0.12077973"
+          yes | sdkmanager --licenses || true
+          sdkmanager --install "ndk;27.0.12077973"
+          chmod +x android/gradlew
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
