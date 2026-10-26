@@ -37,27 +37,41 @@ class UpdateDialog extends StatelessWidget {
     List<String> noteLines = [];
 
     if (rawNotes.isNotEmpty) {
-      noteLines = rawNotes
-          .split('\n')
-          .map((l) => l.trim())
-          .where((l) =>
-              l.isNotEmpty &&
-              !l.toLowerCase().contains('full changelog') &&
-              !l.toLowerCase().contains("what's changed"))
-          .map((l) {
-            var clean = l.replaceFirst(RegExp(r'^[-*•#\d.]+\s*'), '').trim();
-            clean = clean.replaceFirst(RegExp(r'\s+by\s+@\w+.*$', caseSensitive: false), '').trim();
-            clean = clean.replaceFirst(
-                RegExp(r'^(feat|fix|docs|style|refactor|perf|test|chore)(\(.*?\))?:\s*',
-                    caseSensitive: false),
-                '').trim();
-            if (clean.isNotEmpty) {
-              clean = clean[0].toUpperCase() + clean.substring(1);
+      final lines = rawNotes.split('\n');
+      for (var l in lines) {
+        l = l.trim();
+        if (l.isEmpty ||
+            l.toLowerCase().contains('full changelog') ||
+            l.toLowerCase().contains("what's changed")) {
+          continue;
+        }
+
+        // Rimuovi link markdown [text](url) -> text
+        l = l.replaceAllMapped(RegExp(r'\[([^\]]+)\]\([^\)]+\)'), (m) => m.group(1) ?? '');
+        // Rimuovi prefissi di release o commit convenzionali
+        l = l.replaceFirst(RegExp(r'^Release\s+v?[\d.]+\s*:\s*', caseSensitive: false), '').trim();
+        l = l.replaceFirst(RegExp(r'^[-*•#\d.]+\s*'), '').trim();
+        l = l.replaceFirst(RegExp(r'\s+by\s+@\w+.*$', caseSensitive: false), '').trim();
+        l = l.replaceFirst(
+            RegExp(r'^(feat|fix|docs|style|refactor|perf|test|chore)(\(.*?\))?:\s*',
+                caseSensitive: false),
+            '').trim();
+
+        // Se la riga è un elenco separato da virgole (es: "Impostazioni, Equalizzatore, Car Mode")
+        if (l.contains(',') && l.length > 30) {
+          final subparts = l.split(',');
+          for (var p in subparts) {
+            p = p.trim().replaceFirst(RegExp(r'^e\s+', caseSensitive: false), '');
+            if (p.length > 2) {
+              final formatted = p[0].toUpperCase() + p.substring(1);
+              noteLines.add(formatted);
             }
-            return clean;
-          })
-          .where((l) => l.length > 3)
-          .toList();
+          }
+        } else if (l.length > 3) {
+          final formatted = l[0].toUpperCase() + l.substring(1);
+          noteLines.add(formatted);
+        }
+      }
     }
 
     if (noteLines.isEmpty) {

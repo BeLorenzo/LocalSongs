@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout del codice
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Java JDK 17
         uses: actions/setup-java@v4
@@ -51,6 +53,23 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
 
+      - name: Estrai note di rilascio da Git
+        id: release_notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          # 1. Prova a estrarre il messaggio annotato del tag
+          NOTES=$(git tag -l --format='%(contents)' ${{ github.ref_name }} | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          
+          # 2. Se vuoto, prendi il commit message dell'ultimo commit
+          if [ -z "$NOTES" ]; then
+            NOTES=$(git log -1 --pretty=%B)
+          fi
+
+          # Scrivi nell'output multiriga per GitHub Actions
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Crea GitHub Release (solo su Tag)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -58,6 +77,7 @@ jobs:
           files: build/app/outputs/flutter-apk/app-release.apk
           name: Release ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
+          body: ${{ steps.release_notes.outputs.body }}
           draft: false
           prerelease: false
-          generate_release_notes: true
+          generate_release_notes: false
