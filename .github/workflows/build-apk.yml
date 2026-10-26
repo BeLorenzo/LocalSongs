@@ -25,14 +25,16 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Setup Android NDK 27 & Licenses
         run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager --install "ndk;27.0.12077973"
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.0.12077973"
           chmod +x android/gradlew
+
+      - name: Prepara Debug Keystore
+        run: |
+          mkdir -p ~/.android
+          keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2

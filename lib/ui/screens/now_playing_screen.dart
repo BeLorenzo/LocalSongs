@@ -504,7 +504,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                       final playbackState = stateSnapshot.data;
                       final isPlaying = playbackState?.playing ?? false;
                       final loopMode = widget.audioHandler.player.loopMode;
-                      final shuffleEnabled = widget.audioHandler.player.shuffleModeEnabled;
+                      final shuffleEnabled = widget.audioHandler.isShuffleActive;
 
                       IconData loopIcon = Icons.repeat_rounded;
                       Color loopColor = Colors.white38;

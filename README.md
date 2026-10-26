@@ -12,7 +12,7 @@ Un lettore musicale moderno, leggero e reattivo per Android sviluppato in **Flut
   * 📅 **Meno recenti:** Cronologia classica.
   * 🔤 **Titolo (A - Z / Z - A):** Ordinamento alfabetico completo.
   * 👤 **Artista (A - Z):** Raggruppamento per artista.
-  * **Riproduzione Sequenziale o Casuale:** Tasto "Riproduci" per scorrere i brani nell'ordine scelto (es. dalle ultime novità a ritroso) oppure "Casuale" (Shuffle).
+  * **Riproduzione Sequenziale o Casuale (Shuffle Smart):** Tasto "Riproduci" per scorrere i brani nell'ordine scelto oppure "Casuale" (Shuffle). Quando lo shuffle è attivo, viene generata una coda casuale senza ripetizioni: tutti i brani vengono riprodotti esattamente una volta prima di ricominciare il ciclo.
 * **Aggiornamenti In-App (OTA con Banner):**
   * Controllo automatico o manuale di nuove release su GitHub (`/releases/latest`).
   * Modalità dark dialog coerente con visualizzazione delle note di rilascio (changelog) e pulsante diretto per scaricare e installare l'APK.

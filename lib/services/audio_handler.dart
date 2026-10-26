@@ -25,6 +25,8 @@ class MusicAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   final AudioPlayer _player = AudioPlayer();
   ConcatenatingAudioSource _playlist = ConcatenatingAudioSource(children: []);
   List<SongModel> _currentSongList = [];
+  List<SongModel> _originalSongList = [];
+  bool _isShuffleActive = false;
   Timer? _sleepTimer;
   DateTime? _sleepTimerEndTime;
 
@@ -38,6 +40,7 @@ class MusicAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   AudioPlayer get player => _player;
   List<SongModel> get currentSongList => _currentSongList;
   DateTime? get sleepTimerEndTime => _sleepTimerEndTime;
+  bool get isShuffleActive => _isShuffleActive;
 
   MusicAudioHandler() {
     _initStreams();
@@ -87,7 +90,6 @@ class MusicAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       debugPrint('AudioSession configurata OK');
     } catch (e) {
       _emitError('Errore config AudioSession: $e');
-      // Completa comunque per non bloccare la riproduzione
       if (!_audioSessionReady.isCompleted) {
         _audioSessionReady.complete();
       }
@@ -122,17 +124,16 @@ class MusicAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       bufferedPosition: _player.bufferedPosition,
       speed: _player.speed,
       queueIndex: _player.currentIndex,
+      shuffleMode: _isShuffleActive ? AudioServiceShuffleMode.all : AudioServiceShuffleMode.none,
     ));
   }
 
   void _initStreams() {
-    // 1. Ascolta lo stato di riproduzione E gli errori del player ExoPlayer
     _player.playbackEventStream.listen(
       (PlaybackEvent event) {
         _broadcastState();
       },
       onError: (Object e, StackTrace st) {
-        // Errori dal livello nativo ExoPlayer (file corrotto, codec non supportato, ecc.)
         if (e is PlayerException) {
           _emitError('Errore player: ${e.message ?? "sconosciuto"} (codice: ${e.code})');
         } else if (e is PlayerInterruptedException) {
@@ -143,14 +144,12 @@ class MusicAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       },
     );
 
-    // 2. Ascolta la posizione per sincronizzare la seekbar nella tendina notifiche / lockscreen
     _player.positionStream.listen((position) {
       playbackState.add(playbackState.value.copyWith(
         updatePosition: position,
       ));
     });
 
-    // 3. Ascolta il cambio traccia mantenendo la durata
     _player.currentIndexStream.listen((index) {
       if (index != null && queue.value.isNotEmpty && index < queue.value.length) {
         final item = queue.value[index];
@@ -159,7 +158,6 @@ class MusicAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       }
     });
 
-    // 4. Aggiorna istantaneamente la durata del brano appena caricato
     _player.durationStream.listen((duration) {
       final current = mediaItem.value;
       if (current != null && duration != null) {
@@ -168,10 +166,13 @@ class MusicAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       }
     });
 
-    // 5. Monitora lo stato del player per rilevare blocchi e completamenti
     _player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
         _broadcastState();
+        if (_player.loopMode == LoopMode.all && _isShuffleActive && _currentSongList.length > 1) {
+          // Ricomincia con un nuovo rimescolamento completo senza ripetizioni
+          skipToNext();
+        }
       }
     });
   }
@@ -190,41 +191,13 @@ class MusicAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     });
   }
 
-  // Avvia una lista di brani partendo da un indice
-  Future<void> playSongList(List<SongModel> songs, int initialIndex) async {
-    if (songs.isEmpty) return;
-
-    // Aspetta che AudioSession sia configurata prima di tentare qualsiasi cosa
-    await _audioSessionReady.future;
-
-    final targetIndex = initialIndex.clamp(0, songs.length - 1);
-    final targetSong = songs[targetIndex];
-
-    // Verifica che il file esista fisicamente
-    final file = File(targetSong.path);
-    if (!await file.exists()) {
-      _emitError('File non trovato: ${targetSong.title}\n${targetSong.path}');
-      return;
-    }
-
-    // Se la lista è già quella in coda, fa seek rapido senza ricostruire la sorgente
-    final bool isSameList = _currentSongList.length == songs.length &&
-        _currentSongList.isNotEmpty &&
-        _currentSongList.first.path == songs.first.path &&
-        _currentSongList.last.path == songs.last.path;
-
-    if (isSameList && _player.audioSource != null) {
-      try {
-        await _player.seek(Duration.zero, index: targetIndex);
-        await _player.play();
-        return;
-      } catch (e) {
-        _emitError('Seek rapido fallito per "${targetSong.title}": $e\nRicarico la sorgente...');
-      }
-    }
-
-    _currentSongList = List.from(songs);
-
+  // Helper interno per ricostruire la sorgente e impostare la coda
+  Future<void> _buildAndPlaySources(
+    List<SongModel> songs,
+    int initialIndex, {
+    Duration? initialPosition,
+    bool autoPlay = true,
+  }) async {
     final mediaItems = songs.map((s) {
       return MediaItem(
         id: s.path,
@@ -235,7 +208,6 @@ class MusicAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       );
     }).toList();
 
-    // Aggiorna la coda
     queue.add(mediaItems);
 
     final audioSources = songs.map((s) {
@@ -256,21 +228,68 @@ class MusicAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     );
 
     try {
-      // Stop pulito prima di caricare nuova sorgente per evitare race conditions
       await _player.stop();
       await _player.setAudioSource(
         _playlist,
-        initialIndex: targetIndex,
+        initialIndex: initialIndex.clamp(0, songs.length - 1),
+        initialPosition: initialPosition,
       );
-      await _player.play();
+      if (autoPlay) {
+        await _player.play();
+      }
     } on PlayerException catch (e) {
-      _emitError('Errore riproduzione "${targetSong.title}": ${e.message ?? e.code}');
+      _emitError('Errore riproduzione: ${e.message ?? e.code}');
     } on PlayerInterruptedException catch (e) {
-      _emitError('Riproduzione interrotta per "${targetSong.title}": ${e.message}');
+      _emitError('Riproduzione interrotta: ${e.message}');
     } catch (e, stack) {
-      _emitError('Errore imprevisto per "${targetSong.title}": $e');
+      _emitError('Errore imprevisto: $e');
       debugPrint('Stack trace: $stack');
     }
+  }
+
+  // Avvia una lista di brani normale (lineare)
+  Future<void> playSongList(List<SongModel> songs, int initialIndex) async {
+    if (songs.isEmpty) return;
+    await _audioSessionReady.future;
+
+    _isShuffleActive = false;
+    _originalSongList = List.from(songs);
+    _currentSongList = List.from(songs);
+
+    final targetIndex = initialIndex.clamp(0, songs.length - 1);
+    final targetSong = songs[targetIndex];
+
+    final file = File(targetSong.path);
+    if (!await file.exists()) {
+      _emitError('File non trovato: ${targetSong.title}\n${targetSong.path}');
+      return;
+    }
+
+    await _buildAndPlaySources(songs, targetIndex);
+  }
+
+  // Avvia una lista in modalità Shuffle: crea un mazzo casuale senza ripetizioni
+  Future<void> playShuffled(List<SongModel> songs, {int? startIndex}) async {
+    if (songs.isEmpty) return;
+    await _audioSessionReady.future;
+
+    _originalSongList = List.from(songs);
+    _isShuffleActive = true;
+
+    final targetSong = (startIndex != null && startIndex >= 0 && startIndex < songs.length)
+        ? songs[startIndex]
+        : null;
+
+    final shuffled = List<SongModel>.from(songs);
+    shuffled.shuffle();
+
+    if (targetSong != null) {
+      shuffled.removeWhere((s) => s.path == targetSong.path);
+      shuffled.insert(0, targetSong);
+    }
+
+    _currentSongList = shuffled;
+    await _buildAndPlaySources(shuffled, 0);
   }
 
   @override
@@ -316,7 +335,16 @@ class MusicAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
       if (_player.hasNext) {
         await _player.seekToNext();
       } else if (_player.loopMode == LoopMode.all && queue.value.isNotEmpty) {
-        await _player.seek(Duration.zero, index: 0);
+        if (_isShuffleActive && _currentSongList.length > 1) {
+          // Quando tutti i brani della coda casuale sono passati senza ripetizioni,
+          // genera un nuovo mazzo casuale per il ciclo successivo!
+          final reshuffled = List<SongModel>.from(_currentSongList);
+          reshuffled.shuffle();
+          _currentSongList = reshuffled;
+          await _buildAndPlaySources(reshuffled, 0);
+        } else {
+          await _player.seek(Duration.zero, index: 0);
+        }
       }
     } catch (e) {
       _emitError('Errore skip successivo: $e');
@@ -326,7 +354,6 @@ class MusicAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   @override
   Future<void> skipToPrevious() async {
     try {
-      // Se siamo oltre i 3 secondi, riavvia la traccia (comportamento standard)
       if (_player.position.inSeconds > 3) {
         await _player.seek(Duration.zero);
       } else if (_player.hasPrevious) {
@@ -415,12 +442,10 @@ class MusicAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
 
   @override
   Future<void> setShuffleMode(AudioServiceShuffleMode shuffleMode) async {
-    final enabled = shuffleMode != AudioServiceShuffleMode.none;
-    await _player.setShuffleModeEnabled(enabled);
-    if (enabled) {
-      await _player.shuffle();
+    final wantShuffle = shuffleMode != AudioServiceShuffleMode.none;
+    if (wantShuffle != _isShuffleActive) {
+      await toggleShuffleMode();
     }
-    playbackState.add(playbackState.value.copyWith(shuffleMode: shuffleMode));
   }
 
   Future<void> toggleLoopMode() async {
@@ -438,9 +463,54 @@ class MusicAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
   }
 
   Future<void> toggleShuffleMode() async {
-    final isEnabled = _player.shuffleModeEnabled;
-    await setShuffleMode(
-      isEnabled ? AudioServiceShuffleMode.none : AudioServiceShuffleMode.all,
-    );
+    if (_currentSongList.isEmpty) return;
+
+    if (!_isShuffleActive) {
+      // ATTIVAZIONE SHUFFLE
+      _isShuffleActive = true;
+      if (_originalSongList.isEmpty) {
+        _originalSongList = List.from(_currentSongList);
+      }
+
+      final currentIndex = _player.currentIndex ?? 0;
+      final currentSong = (currentIndex >= 0 && currentIndex < _currentSongList.length)
+          ? _currentSongList[currentIndex]
+          : _currentSongList.first;
+
+      // Crea un mazzo casuale con i restanti brani (nessuna ripetizione)
+      final remaining = _currentSongList.where((s) => s.path != currentSong.path).toList();
+      remaining.shuffle();
+
+      final newQueue = [currentSong, ...remaining];
+      final currentPos = _player.position;
+      final wasPlaying = _player.playing;
+
+      _currentSongList = newQueue;
+      await _buildAndPlaySources(newQueue, 0, initialPosition: currentPos, autoPlay: wasPlaying);
+    } else {
+      // DISATTIVAZIONE SHUFFLE: ripristina la coda originaria
+      _isShuffleActive = false;
+      final currentIndex = _player.currentIndex ?? 0;
+      final currentSong = (currentIndex >= 0 && currentIndex < _currentSongList.length)
+          ? _currentSongList[currentIndex]
+          : null;
+
+      final restoredList = _originalSongList.isNotEmpty
+          ? List<SongModel>.from(_originalSongList)
+          : List<SongModel>.from(_currentSongList);
+
+      int restoredIndex = 0;
+      if (currentSong != null) {
+        restoredIndex = restoredList.indexWhere((s) => s.path == currentSong.path);
+        if (restoredIndex < 0) restoredIndex = 0;
+      }
+
+      final currentPos = _player.position;
+      final wasPlaying = _player.playing;
+
+      _currentSongList = restoredList;
+      await _buildAndPlaySources(restoredList, restoredIndex, initialPosition: currentPos, autoPlay: wasPlaying);
+    }
+    _broadcastState();
   }
 }

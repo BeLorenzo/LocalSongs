@@ -93,10 +93,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     widget.audioHandler.playSongList(playlist, index);
   }
 
-  void _shuffleAll() {
-    if (_allSongs.isEmpty) return;
-    final shuffled = List<SongModel>.from(_allSongs)..shuffle();
-    widget.audioHandler.playSongList(shuffled, 0);
+  void _shuffleAll(List<SongModel> songs) {
+    if (songs.isEmpty) return;
+    widget.audioHandler.playShuffled(songs);
   }
 
   void _showSortOrderBottomSheet(BuildContext context) {
@@ -436,7 +435,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               const SizedBox(width: 8),
               // Tasto Shuffle rapido
               InkWell(
-                onTap: _shuffleAll,
+                onTap: () => _shuffleAll(sortedSongs),
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -692,16 +691,29 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                   style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
                 ),
                 if (_currentSongs.isNotEmpty)
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1DB954),
-                      foregroundColor: Colors.black,
-                    ),
-                    icon: const Icon(Icons.play_arrow_rounded),
-                    label: const Text('Riproduci'),
-                    onPressed: () {
-                      widget.audioHandler.playSongList(_currentSongs, 0);
-                    },
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1DB954),
+                          foregroundColor: Colors.black,
+                        ),
+                        icon: const Icon(Icons.play_arrow_rounded),
+                        label: const Text('Riproduci'),
+                        onPressed: () {
+                          widget.audioHandler.playSongList(_currentSongs, 0);
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.shuffle_rounded, color: Color(0xFF1DB954)),
+                        tooltip: 'Casuale',
+                        onPressed: () {
+                          widget.audioHandler.playShuffled(_currentSongs);
+                        },
+                      ),
+                    ],
                   ),
               ],
             ),
