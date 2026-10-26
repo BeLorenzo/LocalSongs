@@ -1,6 +1,7 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../models/song_model.dart';
 import '../../services/audio_handler.dart';
 import '../../services/settings_service.dart';
 import '../../services/storage_service.dart';
@@ -30,6 +31,32 @@ class _CarModeScreenState extends State<CarModeScreen> {
     super.initState();
     // Nascondi barre di sistema per immersione totale in auto
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+    // Autoplay: all'ingresso in modalità guida fa partire subito la musica
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startPlaybackIfStopped();
+    });
+  }
+
+  Future<void> _startPlaybackIfStopped() async {
+    final isPlaying = widget.audioHandler.playbackState.value.playing;
+    if (isPlaying) return;
+
+    // Se c'è già una canzone nel player o in coda, fai play
+    if (widget.audioHandler.mediaItem.value != null) {
+      await widget.audioHandler.play();
+      _triggerFeedback('RIPRODUZIONE AVVIATA ▶️');
+    } else {
+      // Altrimenti carica e avvia subito il primo brano della libreria
+      final songs = await widget.storageService.scanConfiguredFolders(
+        minDurationSeconds: widget.settingsService.minDurationSeconds,
+      );
+      if (songs.isNotEmpty && mounted) {
+        final sorted = StorageService.sortSongs(songs, widget.storageService.getSortOrder());
+        await widget.audioHandler.playSongList(sorted, 0);
+        _triggerFeedback('MUSICA AVVIATA ▶️');
+      }
+    }
   }
 
   @override
@@ -59,7 +86,7 @@ class _CarModeScreenState extends State<CarModeScreen> {
         final mediaItem = mediaSnapshot.data;
         final rawTitle = mediaItem?.title ?? 'Nessun brano';
         final displayTitle = widget.settingsService.cleanTitlesEnabled
-            ? mediaItem?.title ?? 'Nessun brano'
+            ? SongModel.cleanSongTitle(rawTitle)
             : rawTitle;
         final artist = mediaItem?.artist ?? 'Seleziona una canzone';
         final songPath = mediaItem?.id ?? '';

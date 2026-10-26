@@ -379,15 +379,18 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final accentColor = widget.settingsService?.accentColor ?? const Color(0xFF1DB954);
-    final bgColor = widget.settingsService?.backgroundColor ?? const Color(0xFF121212);
-    final isWavy = widget.settingsService?.isWavySeekBar ?? true;
-    final cleanTitles = widget.settingsService?.cleanTitlesEnabled ?? true;
-    final seekStep = widget.settingsService?.seekStepSeconds ?? 10;
+    final settings = widget.settingsService;
 
-    return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
+    Widget buildScreen() {
+      final accentColor = settings?.accentColor ?? const Color(0xFF1DB954);
+      final bgColor = settings?.backgroundColor ?? const Color(0xFF121212);
+      final isWavy = settings?.isWavySeekBar ?? true;
+      final cleanTitles = settings?.cleanTitlesEnabled ?? true;
+      final seekStep = settings?.seekStepSeconds ?? 10;
+
+      return Scaffold(
+        backgroundColor: bgColor,
+        appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
@@ -709,5 +712,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         },
       ),
     );
+    }
+
+    if (settings != null) {
+      return ListenableBuilder(
+        listenable: settings,
+        builder: (context, _) => buildScreen(),
+      );
+    }
+    return buildScreen();
   }
 }

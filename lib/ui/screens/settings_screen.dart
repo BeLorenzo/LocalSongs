@@ -71,21 +71,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final settings = widget.settingsService;
-    final accentColor = settings.accentColor;
-    final stats = widget.storageService.getLibraryStats(widget.songs);
+    return ListenableBuilder(
+      listenable: widget.settingsService,
+      builder: (context, _) {
+        final settings = widget.settingsService;
+        final accentColor = settings.accentColor;
+        final stats = widget.storageService.getLibraryStats(widget.songs);
 
-    return Scaffold(
-      backgroundColor: settings.backgroundColor,
-      appBar: AppBar(
-        backgroundColor: settings.backgroundColor,
-        title: const Text(
-          'Impostazioni & Info',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-        ),
-      ),
-      body: ListView(
-        children: [
+        return Scaffold(
+          backgroundColor: settings.backgroundColor,
+          appBar: AppBar(
+            backgroundColor: settings.backgroundColor,
+            title: const Text(
+              'Impostazioni & Info',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+            ),
+          ),
+          body: ListView(
+            children: [
           // --- STATISTICHE LIBRERIA ---
           _buildSectionHeader('Statistiche Libreria', Icons.analytics_outlined),
           Padding(
@@ -429,6 +432,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 40),
         ],
       ),
+    );
+      },
     );
   }
 
