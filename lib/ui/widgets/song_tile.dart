@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../models/playlist_model.dart';
 import '../../models/song_model.dart';
 import '../../services/storage_service.dart';
@@ -12,6 +13,7 @@ class SongTile extends StatelessWidget {
   final VoidCallback onTap;
   final StorageService storageService;
   final VoidCallback onStateChanged;
+  final bool cleanTitlesEnabled;
 
   const SongTile({
     super.key,
@@ -21,11 +23,13 @@ class SongTile extends StatelessWidget {
     required this.onTap,
     required this.storageService,
     required this.onStateChanged,
+    this.cleanTitlesEnabled = true,
   });
 
   void _showAddToPlaylistDialog(BuildContext context) {
     final playlists = storageService.getPlaylists();
     final textController = TextEditingController();
+    final primaryColor = Theme.of(context).colorScheme.primary;
 
     showDialog(
       context: context,
@@ -41,7 +45,7 @@ class SongTile extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     ListTile(
-                      leading: const Icon(Icons.add_box_rounded, color: Color(0xFF1DB954)),
+                      leading: Icon(Icons.add_box_rounded, color: primaryColor),
                       title: const Text('Crea nuova playlist', style: TextStyle(color: Colors.white)),
                       onTap: () {
                         showDialog(
@@ -54,11 +58,11 @@ class SongTile extends StatelessWidget {
                                 controller: textController,
                                 autofocus: true,
                                 style: const TextStyle(color: Colors.white),
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   hintText: 'Nome playlist',
-                                  hintStyle: TextStyle(color: Colors.grey),
+                                  hintStyle: const TextStyle(color: Colors.grey),
                                   enabledBorder: UnderlineInputBorder(
-                                    borderSide: BorderSide(color: Color(0xFF1DB954)),
+                                    borderSide: BorderSide(color: primaryColor),
                                   ),
                                 ),
                               ),
@@ -69,7 +73,7 @@ class SongTile extends StatelessWidget {
                                 ),
                                 ElevatedButton(
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF1DB954),
+                                    backgroundColor: primaryColor,
                                     foregroundColor: Colors.black,
                                   ),
                                   onPressed: () async {
@@ -118,7 +122,7 @@ class SongTile extends StatelessWidget {
                               title: Text(pl.name, style: const TextStyle(color: Colors.white)),
                               subtitle: Text('${pl.songPaths.length} brani', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                               trailing: containsSong
-                                  ? const Icon(Icons.check_circle_rounded, color: Color(0xFF1DB954))
+                                  ? Icon(Icons.check_circle_rounded, color: primaryColor)
                                   : null,
                               onTap: () async {
                                 if (containsSong) {
@@ -150,9 +154,86 @@ class SongTile extends StatelessWidget {
     );
   }
 
+  void _shareSong(BuildContext context) {
+    try {
+      Share.shareXFiles(
+        [XFile(song.path)],
+        text: 'Ascolta "${song.title}" su LocalSongs!',
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore condivisione: $e')),
+      );
+    }
+  }
+
+  void _showSongDetailsDialog(BuildContext context) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF282828),
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline_rounded, color: Colors.white70),
+            SizedBox(width: 8),
+            Text('Dettagli File Audio', style: TextStyle(color: Colors.white, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildDetailRow('Titolo:', song.title),
+            _buildDetailRow('Artista:', song.artist),
+            _buildDetailRow('Album:', song.album),
+            _buildDetailRow('Formato:', song.fileExtension.toUpperCase().replaceAll('.', '')),
+            _buildDetailRow('Dimensione:', song.fileSizeFormatted),
+            const SizedBox(height: 8),
+            const Text('Percorso file:', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 2),
+            SelectableText(
+              song.path,
+              style: const TextStyle(color: Colors.white70, fontSize: 11),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('OK', style: TextStyle(color: primaryColor)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isFav = storageService.isFavorite(song.path);
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final displayTitle = song.displayTitle(cleanTitlesEnabled);
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -160,7 +241,7 @@ class SongTile extends StatelessWidget {
         alignment: Alignment.center,
         children: [
           ArtworkWidget(
-            title: song.title,
+            title: displayTitle,
             artist: song.artist,
             size: 48,
             borderRadius: 6,
@@ -182,11 +263,11 @@ class SongTile extends StatelessWidget {
         ],
       ),
       title: Text(
-        song.title,
+        displayTitle,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          color: isPlaying ? const Color(0xFF1DB954) : Colors.white,
+          color: isPlaying ? primaryColor : Colors.white,
           fontWeight: isPlaying ? FontWeight.bold : FontWeight.w500,
           fontSize: 15,
         ),
@@ -203,7 +284,7 @@ class SongTile extends StatelessWidget {
           IconButton(
             icon: Icon(
               isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-              color: isFav ? const Color(0xFF1DB954) : Colors.white38,
+              color: isFav ? primaryColor : Colors.white38,
               size: 22,
             ),
             onPressed: () async {
@@ -217,24 +298,10 @@ class SongTile extends StatelessWidget {
             onSelected: (val) {
               if (val == 'playlist') {
                 _showAddToPlaylistDialog(context);
+              } else if (val == 'share') {
+                _shareSong(context);
               } else if (val == 'info') {
-                showDialog(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    backgroundColor: const Color(0xFF282828),
-                    title: const Text('Info Traccia', style: TextStyle(color: Colors.white)),
-                    content: Text(
-                      'Titolo: ${song.title}\nArtista: ${song.artist}\nAlbum: ${song.album}\n\nPercorso:\n${song.path}',
-                      style: const TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text('OK', style: TextStyle(color: Color(0xFF1DB954))),
-                      ),
-                    ],
-                  ),
-                );
+                _showSongDetailsDialog(context);
               }
             },
             itemBuilder: (ctx) => [
@@ -249,12 +316,22 @@ class SongTile extends StatelessWidget {
                 ),
               ),
               const PopupMenuItem(
+                value: 'share',
+                child: Row(
+                  children: [
+                    Icon(Icons.share_rounded, color: Colors.white70),
+                    SizedBox(width: 12),
+                    Text('Condividi file', style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
                 value: 'info',
                 child: Row(
                   children: [
                     Icon(Icons.info_outline_rounded, color: Colors.white70),
                     SizedBox(width: 12),
-                    Text('Info file', style: TextStyle(color: Colors.white)),
+                    Text('Dettagli file', style: TextStyle(color: Colors.white)),
                   ],
                 ),
               ),

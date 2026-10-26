@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'services/audio_handler.dart';
+import 'services/settings_service.dart';
 import 'services/storage_service.dart';
 import 'ui/screens/home_screen.dart';
 
@@ -21,23 +22,29 @@ void main() async {
   // Inizializza il servizio di archiviazione preferenze/database locale
   final storageService = await StorageService.init();
 
+  // Inizializza il servizio impostazioni & personalizzazione
+  final settingsService = await SettingsService.init();
+
   // Inizializza il Foreground Audio Service nativo
   final audioHandler = await initAudioService() as MusicAudioHandler;
 
   runApp(MusicPlayerApp(
     audioHandler: audioHandler,
     storageService: storageService,
+    settingsService: settingsService,
   ));
 }
 
 class MusicPlayerApp extends StatefulWidget {
   final MusicAudioHandler audioHandler;
   final StorageService storageService;
+  final SettingsService settingsService;
 
   const MusicPlayerApp({
     super.key,
     required this.audioHandler,
     required this.storageService,
+    required this.settingsService,
   });
 
   @override
@@ -83,30 +90,41 @@ class _MusicPlayerAppState extends State<MusicPlayerApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      scaffoldMessengerKey: _scaffoldMessengerKey,
-      title: 'Lettore Musicale',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF121212),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF1DB954),
-          surface: Color(0xFF121212),
-          onPrimary: Colors.black,
-          onSurface: Colors.white,
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF121212),
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-      ),
-      home: HomeScreen(
-        audioHandler: widget.audioHandler,
-        storageService: widget.storageService,
-      ),
+    return ListenableBuilder(
+      listenable: widget.settingsService,
+      builder: (context, _) {
+        final settings = widget.settingsService;
+        final accent = settings.accentColor;
+        final bg = settings.backgroundColor;
+        final surface = settings.surfaceColor;
+
+        return MaterialApp(
+          scaffoldMessengerKey: _scaffoldMessengerKey,
+          title: 'LocalSongs',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            useMaterial3: true,
+            brightness: Brightness.dark,
+            scaffoldBackgroundColor: bg,
+            colorScheme: ColorScheme.dark(
+              primary: accent,
+              surface: surface,
+              onPrimary: Colors.black,
+              onSurface: Colors.white,
+            ),
+            appBarTheme: AppBarTheme(
+              backgroundColor: bg,
+              foregroundColor: Colors.white,
+              elevation: 0,
+            ),
+          ),
+          home: HomeScreen(
+            audioHandler: widget.audioHandler,
+            storageService: widget.storageService,
+            settingsService: widget.settingsService,
+          ),
+        );
+      },
     );
   }
 }

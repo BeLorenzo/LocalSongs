@@ -47,6 +47,22 @@ extension SongSortOrderExtension on SongSortOrder {
   }
 }
 
+class LibraryStats {
+  final int totalSongs;
+  final int totalBytes;
+  final String formattedSize;
+  final int totalPlaylists;
+  final int totalFolders;
+
+  const LibraryStats({
+    required this.totalSongs,
+    required this.totalBytes,
+    required this.formattedSize,
+    required this.totalPlaylists,
+    required this.totalFolders,
+  });
+}
+
 class StorageService {
   static const _keyFolders = 'saved_music_folders';
   static const _keyFavorites = 'saved_favorite_paths';
@@ -125,15 +141,12 @@ class StorageService {
   Future<bool> requestStoragePermissions() async {
     if (kIsWeb || !Platform.isAndroid) return true;
 
-    // Prova prima con i permessi specifici audio (Android 13+)
     final audioStatus = await Permission.audio.request();
     if (audioStatus.isGranted) return true;
 
-    // Se fallisce, prova il permesso classico storage
     final storageStatus = await Permission.storage.request();
     if (storageStatus.isGranted) return true;
 
-    // Se ancora non concesso, prova manageExternalStorage per cartelle arbitrarie
     final manageStatus = await Permission.manageExternalStorage.request();
     if (manageStatus.isGranted) return true;
 
@@ -160,10 +173,15 @@ class StorageService {
   }
 
   // --- SCANSIONE FILE AUDIO ---
-  Future<List<SongModel>> scanConfiguredFolders() async {
+  Future<List<SongModel>> scanConfiguredFolders({int minDurationSeconds = 0}) async {
     final folders = getFolders();
     final List<SongModel> songs = [];
     final Set<String> seenPaths = {};
+
+    // Stima della dimensione minima in byte per filtrare file brevi (es. vocali whatsapp / suoni notifiche)
+    // A ~96-128 kbps, 1 secondo sono circa ~12-16 KB.
+    // 15s = ~180 KB, 30s = ~360 KB, 60s = ~720 KB
+    final int minBytesThreshold = minDurationSeconds > 0 ? (minDurationSeconds * 12 * 1024) : 0;
 
     for (final folderPath in folders) {
       final dir = Directory(folderPath);
@@ -175,8 +193,13 @@ class StorageService {
           if (entity is File) {
             final ext = p.extension(entity.path).toLowerCase();
             if (_supportedExtensions.contains(ext) && !seenPaths.contains(entity.path)) {
+              final song = SongModel.fromFile(entity);
+              // Filtro audio brevi se impostato
+              if (minBytesThreshold > 0 && song.fileSize > 0 && song.fileSize < minBytesThreshold) {
+                continue;
+              }
               seenPaths.add(entity.path);
-              songs.add(SongModel.fromFile(entity));
+              songs.add(song);
             }
           }
         }
@@ -186,6 +209,49 @@ class StorageService {
     }
 
     return songs;
+  }
+
+  // --- STATISTICHE LIBRERIA ---
+  static String formatBytes(int bytes) {
+    if (bytes <= 0) return '0 B';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+
+  LibraryStats getLibraryStats(List<SongModel> songs) {
+    int totalBytes = 0;
+    for (final song in songs) {
+      totalBytes += song.fileSize;
+    }
+    return LibraryStats(
+      totalSongs: songs.length,
+      totalBytes: totalBytes,
+      formattedSize: formatBytes(totalBytes),
+      totalPlaylists: getPlaylists().length,
+      totalFolders: getFolders().length,
+    );
+  }
+
+  Future<void> clearTemporaryCache() async {
+    try {
+      final tempDir = Directory.systemTemp;
+      if (await tempDir.exists()) {
+        final entries = tempDir.listSync();
+        for (final entry in entries) {
+          try {
+            if (entry.path.contains('localsongs') || entry.path.contains('flutter')) {
+              entry.deleteSync(recursive: true);
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      debugPrint('Errore pulizia cache: $e');
+    }
   }
 
   // --- PREFERITI ---

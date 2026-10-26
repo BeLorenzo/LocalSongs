@@ -4,19 +4,23 @@ import 'package:flutter/material.dart';
 import '../../models/playlist_model.dart';
 import '../../models/song_model.dart';
 import '../../services/audio_handler.dart';
+import '../../services/settings_service.dart';
 import '../../services/storage_service.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/song_tile.dart';
 import '../widgets/update_dialog.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final MusicAudioHandler audioHandler;
   final StorageService storageService;
+  final SettingsService settingsService;
 
   const HomeScreen({
     super.key,
     required this.audioHandler,
     required this.storageService,
+    required this.settingsService,
   });
 
   @override
@@ -38,7 +42,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _currentSortOrder = widget.storageService.getSortOrder();
     _loadMusicLibrary();
 
-    // Verifica automatica aggiornamenti all'avvio (come su Al-Piof)
+    // Verifica automatica aggiornamenti all'avvio
     WidgetsBinding.instance.addPostFrameCallback((_) {
       UpdateDialog.showIfAvailable(context);
     });
@@ -47,7 +51,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Future<void> _loadMusicLibrary() async {
     setState(() => _isLoading = true);
     await widget.storageService.requestStoragePermissions();
-    final songs = await widget.storageService.scanConfiguredFolders();
+    final songs = await widget.storageService.scanConfiguredFolders(
+      minDurationSeconds: widget.settingsService.minDurationSeconds,
+    );
     if (mounted) {
       setState(() {
         _allSongs = songs;
@@ -99,9 +105,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _showSortOrderBottomSheet(BuildContext context) {
+    final accentColor = widget.settingsService.accentColor;
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
+      backgroundColor: widget.settingsService.surfaceColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -117,7 +124,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
                   child: Row(
                     children: [
-                      const Icon(Icons.sort_rounded, color: Color(0xFF1DB954), size: 22),
+                      Icon(Icons.sort_rounded, color: accentColor, size: 22),
                       const SizedBox(width: 10),
                       const Text(
                         'Ordina brani per',
@@ -136,13 +143,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   return ListTile(
                     leading: Icon(
                       isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-                      color: isSelected ? const Color(0xFF1DB954) : Colors.grey,
+                      color: isSelected ? accentColor : Colors.grey,
                       size: 20,
                     ),
                     title: Text(
                       order.label,
                       style: TextStyle(
-                        color: isSelected ? const Color(0xFF1DB954) : Colors.white,
+                        color: isSelected ? accentColor : Colors.white,
                         fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                         fontSize: 15,
                       ),
@@ -174,6 +181,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           playlistId: playlistId,
           audioHandler: widget.audioHandler,
           storageService: widget.storageService,
+          settingsService: widget.settingsService,
           onPlaylistUpdated: () {
             setState(() {});
           },
@@ -184,6 +192,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   void _createNewPlaylistDialog() {
     final textController = TextEditingController();
+    final accentColor = widget.settingsService.accentColor;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -193,11 +203,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           controller: textController,
           autofocus: true,
           style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: 'Nome della playlist',
-            hintStyle: TextStyle(color: Colors.grey),
+            hintStyle: const TextStyle(color: Colors.grey),
             enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Color(0xFF1DB954)),
+              borderSide: BorderSide(color: accentColor),
             ),
           ),
         ),
@@ -208,7 +218,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1DB954),
+              backgroundColor: accentColor,
               foregroundColor: Colors.black,
             ),
             onPressed: () async {
@@ -233,6 +243,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
+    final accentColor = widget.settingsService.accentColor;
+    final bgColor = widget.settingsService.backgroundColor;
+
     final filteredSongs = _allSongs.where((s) {
       final q = _searchQuery.toLowerCase();
       return s.title.toLowerCase().contains(q) ||
@@ -241,9 +254,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }).toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF121212),
+        backgroundColor: bgColor,
         elevation: 0,
         title: const Text(
           'LocalSongs',
@@ -256,10 +269,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             onPressed: _loadMusicLibrary,
           ),
           IconButton(
-            icon: const Icon(Icons.system_update_rounded, color: Colors.white),
-            tooltip: 'Controlla aggiornamenti',
+            icon: const Icon(Icons.settings_rounded, color: Colors.white),
+            tooltip: 'Impostazioni & Info',
             onPressed: () {
-              UpdateDialog.showIfAvailable(context, force: true, showToastIfUpToDate: true);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SettingsScreen(
+                    audioHandler: widget.audioHandler,
+                    storageService: widget.storageService,
+                    settingsService: widget.settingsService,
+                    songs: _allSongs,
+                    onLibraryReloadNeeded: _loadMusicLibrary,
+                  ),
+                ),
+              );
             },
           ),
         ],
@@ -273,7 +297,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: Container(
                   height: 42,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF242424),
+                    color: widget.settingsService.cardColor,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: TextField(
@@ -301,8 +325,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
               TabBar(
                 controller: _tabController,
-                indicatorColor: const Color(0xFF1DB954),
-                labelColor: const Color(0xFF1DB954),
+                indicatorColor: accentColor,
+                labelColor: accentColor,
                 unselectedLabelColor: Colors.grey,
                 indicatorWeight: 3,
                 tabs: const [
@@ -319,8 +343,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         children: [
           Expanded(
             child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: Color(0xFF1DB954)),
+                ? Center(
+                    child: CircularProgressIndicator(color: accentColor),
                   )
                 : TabBarView(
                     controller: _tabController,
@@ -340,6 +364,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           MiniPlayer(
             audioHandler: widget.audioHandler,
             storageService: widget.storageService,
+            settingsService: widget.settingsService,
           ),
         ],
       ),
@@ -348,6 +373,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   // --- TAB BRANI ---
   Widget _buildSongsTab(List<SongModel> songs) {
+    final accentColor = widget.settingsService.accentColor;
+
     if (widget.storageService.getFolders().isEmpty) {
       return Center(
         child: Padding(
@@ -370,7 +397,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1DB954),
+                  backgroundColor: accentColor,
                   foregroundColor: Colors.black,
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 ),
@@ -416,7 +443,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1DB954),
+                    color: accentColor,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Row(
@@ -440,10 +467,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF282828),
+                    color: widget.settingsService.surfaceColor,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Icon(Icons.shuffle_rounded, size: 18, color: Color(0xFF1DB954)),
+                  child: Icon(Icons.shuffle_rounded, size: 18, color: accentColor),
                 ),
               ),
               const SizedBox(width: 8),
@@ -454,7 +481,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF282828),
+                    color: widget.settingsService.surfaceColor,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: Colors.white12),
                   ),
@@ -494,6 +521,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         isPlaying: isCurrent,
                         isPlayingAudio: isPlayingAudio,
                         storageService: widget.storageService,
+                        cleanTitlesEnabled: widget.settingsService.cleanTitlesEnabled,
                         onTap: () => _playSong(sortedSongs, index),
                         onStateChanged: () => setState(() {}),
                       );
@@ -510,6 +538,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   // --- TAB PLAYLIST ---
   Widget _buildPlaylistsTab() {
+    final accentColor = widget.settingsService.accentColor;
+    final surfaceColor = widget.settingsService.surfaceColor;
     final playlists = widget.storageService.getPlaylists();
     final favPaths = widget.storageService.getFavorites();
     final favSongs = _allSongs.where((s) => favPaths.contains(s.path)).toList();
@@ -520,8 +550,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         // Bottone Nuova Playlist
         ListTile(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          tileColor: const Color(0xFF282828),
-          leading: const Icon(Icons.add_circle_outline_rounded, color: Color(0xFF1DB954), size: 36),
+          tileColor: surfaceColor,
+          leading: Icon(Icons.add_circle_outline_rounded, color: accentColor, size: 36),
           title: const Text('Crea Nuova Playlist', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           onTap: _createNewPlaylistDialog,
         ),
@@ -530,8 +560,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         // Preferiti sempre in cima
         ListTile(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          tileColor: const Color(0xFF1E1E1E),
-          leading: const Icon(Icons.favorite_rounded, color: Color(0xFF1DB954), size: 32),
+          tileColor: surfaceColor,
+          leading: Icon(Icons.favorite_rounded, color: accentColor, size: 32),
           title: const Text('Brani Preferiti', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           subtitle: Text('${favSongs.length} brani', style: const TextStyle(color: Colors.grey)),
           trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey, size: 16),
@@ -547,25 +577,46 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             padding: const EdgeInsets.only(bottom: 8.0),
             child: ListTile(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              tileColor: const Color(0xFF1E1E1E),
-              leading: const Icon(Icons.queue_music_rounded, color: Colors.white70, size: 32),
-              title: Text(pl.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              tileColor: surfaceColor,
+              leading: Icon(Icons.playlist_play_rounded, color: accentColor, size: 32),
+              title: Text(pl.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               subtitle: Text('$count brani', style: const TextStyle(color: Colors.grey)),
               trailing: PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert_rounded, color: Colors.grey),
                 color: const Color(0xFF282828),
-                onSelected: (val) async {
+                onSelected: (val) {
                   if (val == 'delete') {
-                    await widget.storageService.deletePlaylist(pl.id);
-                    setState(() {});
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        backgroundColor: const Color(0xFF282828),
+                        title: const Text('Elimina Playlist', style: TextStyle(color: Colors.white)),
+                        content: Text('Vuoi eliminare "${pl.name}"?', style: const TextStyle(color: Colors.white70)),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Annulla', style: TextStyle(color: Colors.grey)),
+                          ),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                            onPressed: () async {
+                              await widget.storageService.deletePlaylist(pl.id);
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              setState(() {});
+                            },
+                            child: const Text('Elimina'),
+                          ),
+                        ],
+                      ),
+                    );
                   }
                 },
-                itemBuilder: (_) => [
+                itemBuilder: (ctx) => [
                   const PopupMenuItem(
                     value: 'delete',
                     child: Row(
                       children: [
-                        Icon(Icons.delete_rounded, color: Colors.redAccent, size: 20),
+                        Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
                         SizedBox(width: 8),
                         Text('Elimina', style: TextStyle(color: Colors.redAccent)),
                       ],
@@ -583,41 +634,41 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   // --- TAB CARTELLE ---
   Widget _buildFoldersTab() {
+    final accentColor = widget.settingsService.accentColor;
+    final surfaceColor = widget.settingsService.surfaceColor;
     final folders = widget.storageService.getFolders();
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Bottone Aggiungi Cartella
-        ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF1DB954),
-            foregroundColor: Colors.black,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
-          icon: const Icon(Icons.create_new_folder_rounded),
-          label: const Text('Aggiungi Cartella di Musica', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          onPressed: _pickNewFolder,
+        ListTile(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          tileColor: surfaceColor,
+          leading: Icon(Icons.create_new_folder_outlined, color: accentColor, size: 32),
+          title: const Text('Aggiungi Cartella', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          subtitle: const Text('Seleziona un\'altra cartella contenente musica', style: TextStyle(color: Colors.grey)),
+          onTap: _pickNewFolder,
         ),
         const SizedBox(height: 16),
-
         if (folders.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text(
-              'Nessuna cartella presente. Aggiungine una per fare la scansione dei file musicali.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                'Nessuna cartella aggiunta. Tocca "Aggiungi Cartella" per iniziare.',
+                style: TextStyle(color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
             ),
           )
         else
           ...folders.map(
-            (f) => Card(
-              color: const Color(0xFF1E1E1E),
-              margin: const EdgeInsets.only(bottom: 8),
+            (f) => Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
               child: ListTile(
-                leading: const Icon(Icons.folder_rounded, color: Color(0xFF1DB954)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                tileColor: surfaceColor,
+                leading: Icon(Icons.folder_rounded, color: accentColor),
                 title: Text(f, style: const TextStyle(color: Colors.white, fontSize: 13)),
                 trailing: IconButton(
                   icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
@@ -641,6 +692,7 @@ class PlaylistDetailScreen extends StatefulWidget {
   final String? playlistId;
   final MusicAudioHandler audioHandler;
   final StorageService storageService;
+  final SettingsService settingsService;
   final VoidCallback onPlaylistUpdated;
 
   const PlaylistDetailScreen({
@@ -650,6 +702,7 @@ class PlaylistDetailScreen extends StatefulWidget {
     this.playlistId,
     required this.audioHandler,
     required this.storageService,
+    required this.settingsService,
     required this.onPlaylistUpdated,
   });
 
@@ -668,8 +721,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final accentColor = widget.settingsService.accentColor;
+    final bgColor = widget.settingsService.backgroundColor;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: bgColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -696,7 +752,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                     children: [
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1DB954),
+                          backgroundColor: accentColor,
                           foregroundColor: Colors.black,
                         ),
                         icon: const Icon(Icons.play_arrow_rounded),
@@ -707,7 +763,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                       ),
                       const SizedBox(width: 8),
                       IconButton(
-                        icon: const Icon(Icons.shuffle_rounded, color: Color(0xFF1DB954)),
+                        icon: Icon(Icons.shuffle_rounded, color: accentColor),
                         tooltip: 'Casuale',
                         onPressed: () {
                           widget.audioHandler.playShuffled(_currentSongs);
@@ -742,6 +798,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                                 isPlaying: isCurrent,
                                 isPlayingAudio: isPlayingAudio,
                                 storageService: widget.storageService,
+                                cleanTitlesEnabled: widget.settingsService.cleanTitlesEnabled,
                                 onTap: () {
                                   widget.audioHandler.playSongList(_currentSongs, index);
                                 },
@@ -760,6 +817,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           MiniPlayer(
             audioHandler: widget.audioHandler,
             storageService: widget.storageService,
+            settingsService: widget.settingsService,
           ),
         ],
       ),

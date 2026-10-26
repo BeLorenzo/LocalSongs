@@ -6,6 +6,7 @@ class WavySeekBar extends StatefulWidget {
   final Duration duration;
   final bool isPlaying;
   final ValueChanged<Duration> onSeek;
+  final Color? accentColor;
 
   const WavySeekBar({
     super.key,
@@ -13,6 +14,7 @@ class WavySeekBar extends StatefulWidget {
     required this.duration,
     required this.isPlaying,
     required this.onSeek,
+    this.accentColor,
   });
 
   @override
@@ -56,6 +58,7 @@ class _WavySeekBarState extends State<WavySeekBar> with SingleTickerProviderStat
     final maxMs = widget.duration.inMilliseconds > 0 ? widget.duration.inMilliseconds.toDouble() : 1.0;
     final currentMs = (_dragValue ?? widget.position.inMilliseconds.toDouble()).clamp(0.0, maxMs);
     final progress = (currentMs / maxMs).clamp(0.0, 1.0);
+    final activeColor = widget.accentColor ?? Colors.white;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -92,6 +95,7 @@ class _WavySeekBarState extends State<WavySeekBar> with SingleTickerProviderStat
                     progress: progress,
                     phase: _animController.value * 2 * math.pi,
                     isWavy: widget.isPlaying,
+                    activeColor: activeColor,
                   ),
                 );
               },
@@ -107,11 +111,13 @@ class _WavyTrackPainter extends CustomPainter {
   final double progress;
   final double phase;
   final bool isWavy;
+  final Color activeColor;
 
   _WavyTrackPainter({
     required this.progress,
     required this.phase,
     required this.isWavy,
+    required this.activeColor,
   });
 
   @override
@@ -134,7 +140,7 @@ class _WavyTrackPainter extends CustomPainter {
 
     // 2. Tratto attivo (ascoltato) -> ONDULATO se in riproduzione, PIATTO se in pausa
     final activePaint = Paint()
-      ..color = Colors.white
+      ..color = activeColor
       ..strokeWidth = 3.5
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
@@ -169,6 +175,7 @@ class _WavyTrackPainter extends CustomPainter {
   bool shouldRepaint(covariant _WavyTrackPainter oldDelegate) {
     return oldDelegate.progress != progress ||
         oldDelegate.phase != phase ||
-        oldDelegate.isWavy != isWavy;
+        oldDelegate.isWavy != isWavy ||
+        oldDelegate.activeColor != activeColor;
   }
 }

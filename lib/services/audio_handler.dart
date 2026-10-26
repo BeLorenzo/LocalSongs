@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/song_model.dart';
 
@@ -513,4 +514,56 @@ class MusicAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler 
     }
     _broadcastState();
   }
+
+  // --- EQUALIZZATORE DI SISTEMA ---
+  static const MethodChannel _systemChannel =
+      MethodChannel('com.antigravity.localsongs/system_equalizer');
+
+  Future<bool> openSystemEqualizer() async {
+    try {
+      final sessionId = _player.androidAudioSessionId ?? 0;
+      final result = await _systemChannel.invokeMethod<bool>(
+        'openEqualizer',
+        {'sessionId': sessionId},
+      );
+      return result ?? false;
+    } catch (e) {
+      debugPrint('Errore apertura equalizzatore: $e');
+      return false;
+    }
+  }
+
+  // --- VELOCITÀ DI RIPRODUZIONE ---
+  Future<void> setPlaybackSpeed(double speed) async {
+    try {
+      await _player.setSpeed(speed);
+      _broadcastState();
+    } catch (e) {
+      _emitError('Errore impostazione velocità: $e');
+    }
+  }
+
+  // --- SALTO AVANTI / INDIETRO CONFIGURABILE ---
+  Future<void> seekRelative(int seconds) async {
+    try {
+      final current = _player.position;
+      final total = _player.duration ?? Duration.zero;
+      final target = current + Duration(seconds: seconds);
+      if (target < Duration.zero) {
+        await seek(Duration.zero);
+      } else if (total > Duration.zero && target > total) {
+        await skipToNext();
+      } else {
+        await seek(target);
+      }
+    } catch (e) {
+      _emitError('Errore seek: $e');
+    }
+  }
+
+  @override
+  Future<void> fastForward() async => seekRelative(10);
+
+  @override
+  Future<void> rewind() async => seekRelative(-10);
 }

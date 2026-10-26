@@ -1,6 +1,8 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
+import '../../models/song_model.dart';
 import '../../services/audio_handler.dart';
+import '../../services/settings_service.dart';
 import '../../services/storage_service.dart';
 import '../screens/now_playing_screen.dart';
 import 'artwork_widget.dart';
@@ -8,20 +10,29 @@ import 'artwork_widget.dart';
 class MiniPlayer extends StatelessWidget {
   final MusicAudioHandler audioHandler;
   final StorageService storageService;
+  final SettingsService? settingsService;
 
   const MiniPlayer({
     super.key,
     required this.audioHandler,
     required this.storageService,
+    this.settingsService,
   });
 
   @override
   Widget build(BuildContext context) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+
     return StreamBuilder<MediaItem?>(
       stream: audioHandler.mediaItem,
       builder: (context, snapshot) {
         final mediaItem = snapshot.data;
         if (mediaItem == null) return const SizedBox.shrink();
+
+        final cleanTitles = settingsService?.cleanTitlesEnabled ?? true;
+        final displayTitle = cleanTitles
+            ? SongModel.cleanSongTitle(mediaItem.title)
+            : mediaItem.title;
 
         return GestureDetector(
           onTap: () {
@@ -31,6 +42,7 @@ class MiniPlayer extends StatelessWidget {
                 builder: (_) => NowPlayingScreen(
                   audioHandler: audioHandler,
                   storageService: storageService,
+                  settingsService: settingsService,
                 ),
               ),
             );
@@ -38,7 +50,7 @@ class MiniPlayer extends StatelessWidget {
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             decoration: BoxDecoration(
-              color: const Color(0xFF282828),
+              color: settingsService?.surfaceColor ?? const Color(0xFF282828),
               borderRadius: BorderRadius.circular(10),
               boxShadow: [
                 BoxShadow(
@@ -67,7 +79,7 @@ class MiniPlayer extends StatelessWidget {
                         value: progress,
                         minHeight: 2.5,
                         backgroundColor: Colors.white12,
-                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF1DB954)),
+                        valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
                       ),
                     );
                   },
@@ -79,7 +91,7 @@ class MiniPlayer extends StatelessWidget {
                       Hero(
                         tag: 'current_artwork',
                         child: ArtworkWidget(
-                          title: mediaItem.title,
+                          title: displayTitle,
                           artist: mediaItem.artist ?? '',
                           size: 44,
                           borderRadius: 6,
@@ -93,7 +105,7 @@ class MiniPlayer extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              mediaItem.title,
+                              displayTitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
