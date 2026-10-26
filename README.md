@@ -1,4 +1,4 @@
-# Lettore Musicale Locale 🎵
+# LocalSongs 🎵
 
 Un lettore musicale moderno, leggero e reattivo per Android sviluppato in **Flutter**. Progettato per riprodurre la propria libreria musicale offline memorizzata sul dispositivo, senza pubblicità, tracking o connessione internet richiesta.
 
@@ -56,8 +56,8 @@ lib/
 ### Installazione
 1. Clona il repository:
    ```bash
-   git clone https://github.com/BeLorenzo/lettore-musicale-locale.git
-   cd lettore-musicale-locale
+   git clone https://github.com/BeLorenzo/LocalSongs.git
+   cd LocalSongs
    ```
 2. Installa le dipendenze:
    ```bash
@@ -85,4 +85,4 @@ Il progetto include una pipeline GitHub Actions (`.github/workflows/build-apk.ym
 ---
 
 ## 📄 Licenza
-Progetto open-source per uso personale e di laboratorio.
+Distribuito sotto licenza MIT. Consulta il file [LICENSE](LICENSE) per ulteriori dettagli.
