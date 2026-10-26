@@ -7,10 +7,51 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/playlist_model.dart';
 import '../models/song_model.dart';
 
+enum SongSortOrder {
+  newestFirst,
+  oldestFirst,
+  titleAsc,
+  titleDesc,
+  artistAsc,
+}
+
+extension SongSortOrderExtension on SongSortOrder {
+  String get label {
+    switch (this) {
+      case SongSortOrder.newestFirst:
+        return 'Più recenti (Novità)';
+      case SongSortOrder.oldestFirst:
+        return 'Meno recenti';
+      case SongSortOrder.titleAsc:
+        return 'Titolo (A - Z)';
+      case SongSortOrder.titleDesc:
+        return 'Titolo (Z - A)';
+      case SongSortOrder.artistAsc:
+        return 'Artista (A - Z)';
+    }
+  }
+
+  String get shortLabel {
+    switch (this) {
+      case SongSortOrder.newestFirst:
+        return 'Novità';
+      case SongSortOrder.oldestFirst:
+        return 'Vecchi';
+      case SongSortOrder.titleAsc:
+        return 'A - Z';
+      case SongSortOrder.titleDesc:
+        return 'Z - A';
+      case SongSortOrder.artistAsc:
+        return 'Artista';
+    }
+  }
+}
+
 class StorageService {
   static const _keyFolders = 'saved_music_folders';
   static const _keyFavorites = 'saved_favorite_paths';
   static const _keyPlaylists = 'saved_custom_playlists';
+  static const _keySortOrder = 'saved_songs_sort_order';
 
   static const _supportedExtensions = {
     '.mp3',
@@ -30,6 +71,54 @@ class StorageService {
   static Future<StorageService> init() async {
     final prefs = await SharedPreferences.getInstance();
     return StorageService(prefs);
+  }
+
+  // --- GESTIONE ORDINAMENTO ---
+  SongSortOrder getSortOrder() {
+    final raw = _prefs.getString(_keySortOrder);
+    if (raw == null) return SongSortOrder.titleAsc;
+    return SongSortOrder.values.firstWhere(
+      (e) => e.name == raw,
+      orElse: () => SongSortOrder.titleAsc,
+    );
+  }
+
+  Future<void> setSortOrder(SongSortOrder order) async {
+    await _prefs.setString(_keySortOrder, order.name);
+  }
+
+  static List<SongModel> sortSongs(List<SongModel> songs, SongSortOrder order) {
+    final list = List<SongModel>.from(songs);
+    switch (order) {
+      case SongSortOrder.newestFirst:
+        list.sort((a, b) {
+          final cmp = b.dateModifiedMs.compareTo(a.dateModifiedMs);
+          if (cmp != 0) return cmp;
+          return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+        });
+        break;
+      case SongSortOrder.oldestFirst:
+        list.sort((a, b) {
+          final cmp = a.dateModifiedMs.compareTo(b.dateModifiedMs);
+          if (cmp != 0) return cmp;
+          return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+        });
+        break;
+      case SongSortOrder.titleAsc:
+        list.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+        break;
+      case SongSortOrder.titleDesc:
+        list.sort((a, b) => b.title.toLowerCase().compareTo(a.title.toLowerCase()));
+        break;
+      case SongSortOrder.artistAsc:
+        list.sort((a, b) {
+          final cmp = a.artist.toLowerCase().compareTo(b.artist.toLowerCase());
+          if (cmp != 0) return cmp;
+          return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+        });
+        break;
+    }
+    return list;
   }
 
   // --- GESTIONE PERMESSI ---
@@ -96,8 +185,6 @@ class StorageService {
       }
     }
 
-    // Ordina alfabeticamente per titolo
-    songs.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     return songs;
   }
 

@@ -8,6 +8,7 @@ class SongModel {
   final String album;
   final String path;
   final int durationMs;
+  final int dateModifiedMs;
 
   const SongModel({
     required this.id,
@@ -16,6 +17,7 @@ class SongModel {
     required this.album,
     required this.path,
     this.durationMs = 0,
+    this.dateModifiedMs = 0,
   });
 
   factory SongModel.fromFile(File file) {
@@ -35,6 +37,11 @@ class SongModel {
       title = rawName.replaceAll('_', ' ').trim();
     }
 
+    int dateModified = 0;
+    try {
+      dateModified = file.lastModifiedSync().millisecondsSinceEpoch;
+    } catch (_) {}
+
     return SongModel(
       id: file.path,
       title: title.isEmpty ? 'Traccia senza titolo' : title,
@@ -42,6 +49,7 @@ class SongModel {
       album: p.basename(p.dirname(file.path)),
       path: file.path,
       durationMs: 0,
+      dateModifiedMs: dateModified,
     );
   }
 
@@ -52,6 +60,7 @@ class SongModel {
         'album': album,
         'path': path,
         'durationMs': durationMs,
+        'dateModifiedMs': dateModifiedMs,
       };
 
   factory SongModel.fromJson(Map<String, dynamic> json) => SongModel(
@@ -61,6 +70,7 @@ class SongModel {
         album: json['album'] as String? ?? 'Album sconosciuto',
         path: json['path'] as String? ?? '',
         durationMs: json['durationMs'] as int? ?? 0,
+        dateModifiedMs: json['dateModifiedMs'] as int? ?? 0,
       );
 
   SongModel copyWith({
@@ -70,6 +80,7 @@ class SongModel {
     String? album,
     String? path,
     int? durationMs,
+    int? dateModifiedMs,
   }) {
     return SongModel(
       id: id ?? this.id,
@@ -78,6 +89,7 @@ class SongModel {
       album: album ?? this.album,
       path: path ?? this.path,
       durationMs: durationMs ?? this.durationMs,
+      dateModifiedMs: dateModifiedMs ?? this.dateModifiedMs,
     );
   }
 

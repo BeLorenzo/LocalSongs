@@ -25,6 +25,10 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Setup Android NDK 27
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.0.12077973"
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -41,7 +45,7 @@ jobs:
       - name: Carica APK come Artifact di build
         uses: actions/upload-artifact@v4
         with:
-          name: lettore-musicale-release-apk
+          name: LocalSongs-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
 

@@ -7,6 +7,7 @@ import '../../services/audio_handler.dart';
 import '../../services/storage_service.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/song_tile.dart';
+import '../widgets/update_dialog.dart';
 
 class HomeScreen extends StatefulWidget {
   final MusicAudioHandler audioHandler;
@@ -28,12 +29,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   bool _isLoading = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  late SongSortOrder _currentSortOrder;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _currentSortOrder = widget.storageService.getSortOrder();
     _loadMusicLibrary();
+
+    // Verifica automatica aggiornamenti all'avvio (come su Al-Piof)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      UpdateDialog.showIfAvailable(context);
+    });
   }
 
   Future<void> _loadMusicLibrary() async {
@@ -89,6 +97,72 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     if (_allSongs.isEmpty) return;
     final shuffled = List<SongModel>.from(_allSongs)..shuffle();
     widget.audioHandler.playSongList(shuffled, 0);
+  }
+
+  void _showSortOrderBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.sort_rounded, color: Color(0xFF1DB954), size: 22),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'Ordina brani per',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(color: Colors.white12),
+                ...SongSortOrder.values.map((order) {
+                  final isSelected = order == _currentSortOrder;
+                  return ListTile(
+                    leading: Icon(
+                      isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                      color: isSelected ? const Color(0xFF1DB954) : Colors.grey,
+                      size: 20,
+                    ),
+                    title: Text(
+                      order.label,
+                      style: TextStyle(
+                        color: isSelected ? const Color(0xFF1DB954) : Colors.white,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        fontSize: 15,
+                      ),
+                    ),
+                    onTap: () {
+                      setState(() {
+                        _currentSortOrder = order;
+                      });
+                      widget.storageService.setSortOrder(order);
+                      Navigator.pop(ctx);
+                    },
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _openPlaylistDetail(String title, List<SongModel> songs, {String? playlistId}) {
@@ -173,7 +247,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         backgroundColor: const Color(0xFF121212),
         elevation: 0,
         title: const Text(
-          'La Mia Musica',
+          'LocalSongs',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 22),
         ),
         actions: [
@@ -181,6 +255,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             icon: const Icon(Icons.sync_rounded, color: Colors.white),
             tooltip: 'Riscansiona libreria',
             onPressed: _loadMusicLibrary,
+          ),
+          IconButton(
+            icon: const Icon(Icons.system_update_rounded, color: Colors.white),
+            tooltip: 'Controlla aggiornamenti',
+            onPressed: () {
+              UpdateDialog.showIfAvailable(context, force: true, showToastIfUpToDate: true);
+            },
           ),
         ],
         bottom: PreferredSize(
@@ -310,32 +391,83 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       );
     }
 
+    // Applica l'ordinamento dinamico corrente
+    final sortedSongs = StorageService.sortSongs(songs, _currentSortOrder);
+
     return Column(
       children: [
-        // Pulsante shuffle rapido e contatore
+        // Barra controlli ordinamento e riproduzione
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '${songs.length} brani',
-                style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600),
+                '${sortedSongs.length} brani',
+                style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13),
               ),
+              const Spacer(),
+              // Tasto Riproduci sequenziale (dalla prima all'ultima nell'ordine scelto)
+              InkWell(
+                onTap: () {
+                  if (sortedSongs.isNotEmpty) {
+                    _playSong(sortedSongs, 0);
+                  }
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1DB954),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.play_arrow_rounded, size: 18, color: Colors.black),
+                      SizedBox(width: 4),
+                      Text(
+                        'Riproduci',
+                        style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Tasto Shuffle rapido
               InkWell(
                 onTap: _shuffleAll,
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: const Color(0xFF282828),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Row(
+                  child: const Icon(Icons.shuffle_rounded, size: 18, color: Color(0xFF1DB954)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Selettore ordinamento
+              InkWell(
+                onTap: () => _showSortOrderBottomSheet(context),
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF282828),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.shuffle_rounded, size: 16, color: Color(0xFF1DB954)),
-                      SizedBox(width: 6),
-                      Text('Riproduci casuale', style: TextStyle(color: Colors.white, fontSize: 13)),
+                      const Icon(Icons.sort_rounded, size: 16, color: Colors.white70),
+                      const SizedBox(width: 4),
+                      Text(
+                        _currentSortOrder.shortLabel,
+                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                      ),
                     ],
                   ),
                 ),
@@ -353,9 +485,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 builder: (context, mediaSnapshot) {
                   final currentMediaId = mediaSnapshot.data?.id;
                   return ListView.builder(
-                    itemCount: songs.length,
+                    itemCount: sortedSongs.length,
                     itemBuilder: (context, index) {
-                      final song = songs[index];
+                      final song = sortedSongs[index];
                       final isCurrent = currentMediaId == song.path;
 
                       return SongTile(
@@ -363,7 +495,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         isPlaying: isCurrent,
                         isPlayingAudio: isPlayingAudio,
                         storageService: widget.storageService,
-                        onTap: () => _playSong(songs, index),
+                        onTap: () => _playSong(sortedSongs, index),
                         onStateChanged: () => setState(() {}),
                       );
                     },
@@ -399,42 +531,27 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         // Preferiti sempre in cima
         ListTile(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          tileColor: const Color(0xFF1C2D22),
-          leading: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: const Color(0xFF1DB954),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.favorite_rounded, color: Colors.black, size: 26),
-          ),
+          tileColor: const Color(0xFF1E1E1E),
+          leading: const Icon(Icons.favorite_rounded, color: Color(0xFF1DB954), size: 32),
           title: const Text('Brani Preferiti', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           subtitle: Text('${favSongs.length} brani', style: const TextStyle(color: Colors.grey)),
-          trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+          trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey, size: 16),
           onTap: () => _openPlaylistDetail('Brani Preferiti', favSongs),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
 
-        // Lista playlist utente
+        // Elenco Playlist create dall'utente
         ...playlists.map((pl) {
-          final plSongs = _allSongs.where((s) => pl.songPaths.contains(s.path)).toList();
-          return Card(
-            color: const Color(0xFF1C1C1C),
-            margin: const EdgeInsets.only(bottom: 8),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          final count = pl.songPaths.length;
+          final playlistSongs = _allSongs.where((s) => pl.songPaths.contains(s.path)).toList();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
             child: ListTile(
-              leading: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF282828),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.playlist_play_rounded, color: Colors.white70, size: 28),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              tileColor: const Color(0xFF1E1E1E),
+              leading: const Icon(Icons.queue_music_rounded, color: Colors.white70, size: 32),
               title: Text(pl.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-              subtitle: Text('${plSongs.length} brani', style: const TextStyle(color: Colors.grey)),
+              subtitle: Text('$count brani', style: const TextStyle(color: Colors.grey)),
               trailing: PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert_rounded, color: Colors.grey),
                 color: const Color(0xFF282828),
@@ -449,15 +566,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     value: 'delete',
                     child: Row(
                       children: [
-                        Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                        Icon(Icons.delete_rounded, color: Colors.redAccent, size: 20),
                         SizedBox(width: 8),
-                        Text('Elimina playlist', style: TextStyle(color: Colors.redAccent)),
+                        Text('Elimina', style: TextStyle(color: Colors.redAccent)),
                       ],
                     ),
                   ),
                 ],
               ),
-              onTap: () => _openPlaylistDetail(pl.name, plSongs, playlistId: pl.id),
+              onTap: () => _openPlaylistDetail(pl.name, playlistSongs, playlistId: pl.id),
             ),
           );
         }),
@@ -472,6 +589,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // Bottone Aggiungi Cartella
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF1DB954),
@@ -480,36 +598,32 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
           icon: const Icon(Icons.create_new_folder_rounded),
-          label: const Text('AGGIUNGI CARTELLA', style: TextStyle(fontWeight: FontWeight.bold)),
+          label: const Text('Aggiungi Cartella di Musica', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
           onPressed: _pickNewFolder,
         ),
         const SizedBox(height: 16),
+
         if (folders.isEmpty)
           const Padding(
-            padding: EdgeInsets.all(24.0),
+            padding: EdgeInsets.all(16.0),
             child: Text(
-              'Nessuna cartella memorizzata.\nTocca il pulsante in alto per selezionare la cartella della tua musica.',
+              'Nessuna cartella presente. Aggiungine una per fare la scansione dei file musicali.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey),
             ),
           )
         else
           ...folders.map(
-            (folderPath) => Card(
-              color: const Color(0xFF1C1C1C),
+            (f) => Card(
+              color: const Color(0xFF1E1E1E),
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
                 leading: const Icon(Icons.folder_rounded, color: Color(0xFF1DB954)),
-                title: Text(
-                  folderPath,
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                title: Text(f, style: const TextStyle(color: Colors.white, fontSize: 13)),
                 trailing: IconButton(
                   icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
                   onPressed: () async {
-                    await widget.storageService.removeFolder(folderPath);
+                    await widget.storageService.removeFolder(f);
                     await _loadMusicLibrary();
                   },
                 ),
@@ -521,7 +635,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 }
 
-// Schermata dettaglio playlist
+// --- DETTAGLIO PLAYLIST ---
 class PlaylistDetailScreen extends StatefulWidget {
   final String title;
   final List<SongModel> songs;
